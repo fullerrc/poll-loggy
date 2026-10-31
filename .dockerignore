@@ -1,0 +1,9 @@
+.idea
+*.md
+.mvn/wrapper
+mvnw
+mvnw.cmd
+target/
+logs/
+.claude/
+src/test/

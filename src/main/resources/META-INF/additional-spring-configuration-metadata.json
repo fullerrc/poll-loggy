@@ -1,0 +1,8 @@
+{
+  "properties": [
+    {
+      "name": "config.sensorModuleUri",
+      "type": "java.lang.String",
+      "description": "Description for config.sensorModuleUri."
+  }
+] }

@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: poll-loggy
+  mongodb:
+    uri:
+  data:
+    mongodb:
+      auto-index-creation: true
+
+config:
+  sensorModuleUri:
