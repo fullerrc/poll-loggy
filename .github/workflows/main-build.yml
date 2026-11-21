@@ -49,7 +49,7 @@ jobs:
       - name: Log in to registry
         uses: docker/login-action@v4
         with:
-          registry: reg.ci.robertfuller.dev
+          registry: ${{ secrets.REGISTRY_REF }}
           username: ${{ secrets.REGISTRY_USER }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
@@ -60,13 +60,10 @@ jobs:
           push: true
           platforms: linux/amd64
           tags: |
-            reg.ci.robertfuller.dev/poll-loggy:${{ steps.version.outputs.version }}
-            reg.ci.robertfuller.dev/poll-loggy:latest
+            ${{ secrets.REGISTRY_REF }}/poll-loggy:${{ steps.version.outputs.version }}
+            ${{ secrets.REGISTRY_REF }}/poll-loggy:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          secrets: |
-            reposilite_user=${{ secrets.REPOSILITE_USER }}
-            reposilite_password=${{ secrets.REPOSILITE_PASSWORD }}          
 
       - name: Tag commit with build version
         run: |
