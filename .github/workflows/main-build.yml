@@ -74,11 +74,3 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "${{ steps.version.outputs.version }}"
           git push origin "${{ steps.version.outputs.version }}"
-  deploy:
-    name: Deploy md-files
-    needs:
-      - build
-    uses: ./.github/workflows/deploy.yml
-    with:
-      image-tag: ${{ needs.build.outputs.image_tag }}
-    secrets: inherit
