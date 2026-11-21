@@ -8,4 +8,6 @@ spring:
       auto-index-creation: true
 
 config:
-  sensorModuleUri:
+  sensor:
+    uri:
+    pollIntervalMs: 60000

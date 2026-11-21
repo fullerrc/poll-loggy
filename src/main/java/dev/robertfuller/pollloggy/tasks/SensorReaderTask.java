@@ -18,7 +18,7 @@ public class SensorReaderTask {
     private final SensorClient sensorClient;
     private final EnvDataRepository envDataRepository;
 
-    @Scheduled(fixedRate = 5000)
+    @Scheduled(fixedRateString = "${config.sensor.pollIntervalMs}")
     public void readAndReportSensor () throws IOException, InterruptedException {
         EnvData envData = sensorClient.readSensor();
         log.debug(envData.toString());
