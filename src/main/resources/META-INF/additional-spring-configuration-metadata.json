@@ -1,8 +1,13 @@
 {
   "properties": [
     {
-      "name": "config.sensorModuleUri",
+      "name": "config.sensor.uri",
       "type": "java.lang.String",
-      "description": "Description for config.sensorModuleUri."
-  }
-] }
+      "description": "Description for config.sensor.uri."
+    },
+    {
+      "name": "config.sensor.pollIntervalMs",
+      "type": "java.lang.Long",
+      "description": "Description for config.sensor.pollIntervalMs."
+    }
+  ] }

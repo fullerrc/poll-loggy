@@ -18,7 +18,7 @@ public class SensorClient {
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
 
-    @Value("${config.sensorModuleUri}")
+    @Value("${config.sensor.uri}")
     private String sensorModuleUri;
 
     public EnvData readSensor () throws IOException, InterruptedException {
