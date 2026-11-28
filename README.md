@@ -3,12 +3,13 @@
 PollLoggy is a small, general-purpose **polling and action server** built on Spring Boot. It runs scheduled
 tasks. Each task polls a data source, acts on the result, and records it.
 
-Its current task is **environmental monitoring**. Every 5 seconds PollLoggy polls an atmospheric sensor module
-over HTTP for temperature, humidity and barometric pressure, then saves each reading to MongoDB with
-automatic timestamps.
+Its current task is **environmental monitoring**. On a configurable interval (every 60 seconds by default),
+PollLoggy polls an atmospheric sensor module
+over HTTP for temperature, humidity and barometric pressure, then saves each reading to MongoDB with automatic
+timestamps.
 
 ```
-┌──────────────────┐   HTTP GET (every 5s)   ┌───────────────────────────────┐   save   ┌──────────┐
+┌──────────────────┐   HTTP GET (interval)   ┌───────────────────────────────┐   save   ┌──────────┐
 │  Sensor module   │ ◀────────────────────── │           PollLoggy           │ ───────▶ │ MongoDB  │
 │  (JSON endpoint) │ ──────────────────────▶ │ SensorReaderTask → SensorClient│          │          │
 └──────────────────┘   {temp_f, temp_c, …}   └───────────────────────────────┘          └──────────┘
@@ -19,19 +20,20 @@ automatic timestamps.
 | Area          | Choice                                                              |
 |---------------|---------------------------------------------------------------------|
 | Language      | Java 21                                                             |
-| Framework     | Spring Boot 4.1 (scheduling, Spring Data MongoDB)                   |
+| Framework     | Spring Boot 4.2 (scheduling, Spring Data MongoDB)                   |
 | HTTP client   | JDK `java.net.http.HttpClient` (no third-party HTTP dependency)     |
 | JSON          | Jackson 3 (`tools.jackson`)                                         |
 | Persistence   | MongoDB through Spring Data repositories, with auditing             |
 | Boilerplate   | Lombok (`@Value`, `@Builder`, `@RequiredArgsConstructor`, `@Slf4j`) |
 | Testing       | JUnit 5, Mockito (including static mocking), AssertJ, Testcontainers|
 | Packaging     | Multi-stage Docker build, distroless runtime image                  |
+| CI/CD         | GitHub Actions (PR test + image build, versioned image push on `master`), Dependabot |
 
 ## How it works
 
 | Component          | Package          | Responsibility                                                                                 |
 |--------------------|------------------|------------------------------------------------------------------------------------------------|
-| `SensorReaderTask` | `tasks`          | `@Scheduled(fixedRate = 5000)` entry point: reads the sensor, logs the reading, saves it        |
+| `SensorReaderTask` | `tasks`          | `@Scheduled` entry point (rate from `config.sensor.pollIntervalMs`): reads, logs and saves a reading |
 | `SensorClient`     | `services`       | Sends a GET to the configured sensor URI and deserializes the JSON body into `EnvData`          |
 | `EnvData`          | `models`         | Immutable Java `record` that matches the sensor's wire format                                  |
 | `EnvDataRecord`    | `models`         | Immutable MongoDB `@Document`, with `@CreatedDate` / `@LastModifiedDate` audit fields          |
@@ -63,10 +65,15 @@ Scheduling is already turned on application-wide (`SchedulingConfig`), so you do
 
 ## Configuration
 
-| Property                 | Environment variable       | Description                                                   |
-|--------------------------|----------------------------|---------------------------------------------------------------|
-| `spring.mongodb.uri`     | `SPRING_MONGODB_URI`       | MongoDB connection string, e.g. `mongodb://host:27017/pollloggy` |
-| `config.sensorModuleUri` | `CONFIG_SENSORMODULEURI`   | Full URL of the sensor module's JSON endpoint                 |
+| Property                       | Environment variable            | Default | Description                                                      |
+|--------------------------------|---------------------------------|---------|------------------------------------------------------------------|
+| `spring.mongodb.uri`           | `SPRING_MONGODB_URI`            | —       | MongoDB connection string, e.g. `mongodb://host:27017/pollloggy` |
+| `config.sensor.uri`            | `CONFIG_SENSOR_URI`             | —       | Full URL of the sensor module's JSON endpoint                    |
+| `config.sensor.pollIntervalMs` | `CONFIG_SENSOR_POLLINTERVALMS`  | `60000` | How often to poll the sensor, in milliseconds (fixed rate)       |
+
+`spring.data.mongodb.auto-index-creation` is turned on, so indexes declared on documents are created at startup.
+The custom `config.sensor.*` properties are described in `additional-spring-configuration-metadata.json`, so IDEs
+offer completion for them.
 
 The `local` profile (`application-local.yaml`) sets the `dev.robertfuller.pollloggy` logger to `DEBUG`. With
 `DEBUG` on, every reading is logged as it's received.
@@ -83,7 +90,7 @@ The `local` profile (`application-local.yaml`) sets the `dev.robertfuller.polllo
 
 ```bash
 SPRING_MONGODB_URI=mongodb://localhost:27017/pollloggy \
-CONFIG_SENSORMODULEURI=http://<sensor-host>/<path> \
+CONFIG_SENSOR_URI=http://<sensor-host>/<path> \
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
 ```
 
@@ -95,7 +102,7 @@ creates. You don't need to install or configure a database:
 ```bash
 ./mvnw spring-boot:test-run \
   -Dspring-boot.run.profiles=local \
-  -Dspring-boot.run.arguments=--config.sensorModuleUri=http://<sensor-host>/<path>
+  -Dspring-boot.run.arguments=--config.sensor.uri=http://<sensor-host>/<path>
 ```
 
 ### Docker
@@ -104,17 +111,32 @@ creates. You don't need to install or configure a database:
 docker build -t poll-loggy .
 docker run --rm \
   -e SPRING_MONGODB_URI=mongodb://<mongo-host>:27017/pollloggy \
-  -e CONFIG_SENSORMODULEURI=http://<sensor-host>/<path> \
+  -e CONFIG_SENSOR_URI=http://<sensor-host>/<path> \
+  -e CONFIG_SENSOR_POLLINTERVALMS=60000 \
   poll-loggy
 ```
 
 The Dockerfile uses a multi-stage build:
 
-- **Build stage:** downloads Maven and **verifies it against a pinned SHA-512 checksum** before using it to
-  package the jar.
+- **Build stage:** `eclipse-temurin:25-jdk-jammy`. It downloads Maven (3.9.16) and **verifies it against a
+  pinned SHA-512 checksum** before using it to package the jar. Tests are skipped here; CI runs them.
 - **Runtime stage:** `gcr.io/distroless/java21-debian12`, an image with no shell or package manager. This keeps
   the image small and its attack surface low.
 - `.dockerignore` leaves tests, IDE files and build output out of the build context.
+
+## Continuous integration
+
+GitHub Actions workflows live in `.github/workflows/`:
+
+- **PR Build** (`pr-build.yml`), on pull requests to `master`: runs `mvn test` on Temurin JDK 23, then builds
+  the Docker image (without pushing) tagged `<version>-pr<number>-<sha>`.
+- **Main Build** (`main-build.yml`), on pushes to `master` (changes under `.github/` are ignored) or by manual
+  dispatch: computes the next patch version from existing `X.Y.Z` git tags, builds the image, pushes it as
+  `poll-loggy:<version>` and `poll-loggy:latest`, and tags the commit with the version.
+
+The registry and its credentials come from the `REGISTRY_REF`, `REGISTRY_USER` and `REGISTRY_PASSWORD`
+repository secrets. **Dependabot** (`.github/dependabot.yml`) checks Maven dependencies, GitHub Actions and
+Docker base images weekly.
 
 ## Testing approach
 
@@ -186,7 +208,6 @@ src/test/java/...    # Mirrors main/, plus Testcontainers configuration
 
 ## Roadmap
 
-- Make the polling interval configurable instead of fixed at 5 seconds.
 - Handle failures explicitly: non-2xx responses, timeouts, and retry or backoff for an unreachable sensor.
 - Add read endpoints for querying stored readings. Spring Web MVC is already a dependency.
-- Add CI to run the unit and integration tests on every push.
+- Run tests in the `master` build too, not only on pull requests.
